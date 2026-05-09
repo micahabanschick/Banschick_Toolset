@@ -6,7 +6,8 @@
 # What runs inside this container:
 #   1. Cron: ingest_daily.py at 10pm ET weekdays (nightly market data pull)
 #   2. Streamlit: health_dashboard.py on port 3001 (Caddy proxies this)
-#   3. All Parquet data in /app/data/ (persisted via Docker volume)
+#   3. uvicorn: mobile/api.py on port 3002 (mobile PWA, Caddy proxies this)
+#   4. All Parquet data in /app/data/ (persisted via Docker volume)
 #
 # The build context is the QuantPipe repo root — clone it into
 # apps/quantpipe/ or mount it. See docker-compose.yml for volume config.
@@ -50,7 +51,7 @@ CRONTAB
 
 RUN chmod 0644 /etc/cron.d/quantpipe-ingest && crontab /etc/cron.d/quantpipe-ingest
 
-# ── Entrypoint: start cron + Streamlit ────────────────────────────────────
+# ── Entrypoint: start cron + mobile API + Streamlit ──────────────────────
 COPY <<'ENTRYPOINT' /app/entrypoint.sh
 #!/bin/bash
 set -e
@@ -60,8 +61,16 @@ printenv | grep -v "no_proxy" >> /etc/environment
 
 # Start cron daemon in background
 cron
-
 echo "✓ Cron daemon started (nightly ingestion at 10pm ET)"
+
+# Start mobile PWA API in background — must be & so it doesn't block Streamlit
+uv run uvicorn mobile.api:app \
+    --host 0.0.0.0 \
+    --port 3002 \
+    --workers 1 \
+    >> /app/logs/mobile.log 2>&1 &
+echo "✓ Mobile API started on port 3002 (pid $!)"
+
 echo "✓ Starting Streamlit dashboard on port 3001..."
 
 # Start Streamlit as the foreground process
@@ -75,6 +84,7 @@ ENTRYPOINT
 RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 3001
+EXPOSE 3002
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD wget -qO- http://localhost:3001/_stcore/health || exit 1

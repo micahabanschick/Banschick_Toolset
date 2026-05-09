@@ -84,9 +84,10 @@ services:
   # QUANTPIPE — Quantitative Trading & Research Pipeline
   # ──────────────────────────────────────────────────────────────────────────
   # Python 3.12 pipeline: Polars, DuckDB, Parquet, VectorBT, Streamlit.
-  # Runs two processes inside the container:
+  # Runs three processes inside the container:
   #   1. Cron daemon — executes ingest_daily.py at 10pm ET on weekdays
   #   2. Streamlit — health_dashboard.py served on port 3001
+  #   3. uvicorn — mobile/api.py (FastAPI PWA) served on port 3002
   #
   # Data is stored in Parquet files on a persistent volume, NOT PostgreSQL.
   #
