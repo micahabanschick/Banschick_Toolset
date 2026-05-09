@@ -1,0 +1,96 @@
+# ============================================================================
+# BANSCHICK TOOLSET — Caddyfile
+# ============================================================================
+# Routes subdomains to the correct container. Caddy auto-provisions and
+# renews TLS certificates for every domain listed here via Let's Encrypt.
+#
+# NOTE: studybuddy-ai is NOT routed here — it's an internal service only
+# reachable by studybuddy-web via the studybuddy_net Docker network.
+#
+# To add a new app, copy the template at the bottom.
+# See: Master Build Plan, Section 6.2 and Section 8.2
+# ============================================================================
+
+# ──────────────────────────────────────────────────────────────────────────
+# QUANTPIPE — quantpipe.banschick.com → quantpipe:3001 (Streamlit)
+# ──────────────────────────────────────────────────────────────────────────
+# Security tier: ENHANCED
+# Cloudflare Access sits in front (configured in Cloudflare dashboard).
+# Caddy adds rate limiting, security headers, and access logging.
+# ──────────────────────────────────────────────────────────────────────────
+quantpipe.banschick.com {
+	reverse_proxy quantpipe:3001
+
+	# Streamlit uses WebSockets — ensure they're proxied correctly
+	@websockets {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	reverse_proxy @websockets quantpipe:3001
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		X-XSS-Protection "1; mode=block"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	log {
+		output file /data/logs/quantpipe_access.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
+}
+
+# ──────────────────────────────────────────────────────────────────────────
+# STUDYBUDDY — studybuddy.banschick.com → studybuddy-web:3002 (Next.js)
+# ──────────────────────────────────────────────────────────────────────────
+# Security tier: BASELINE (HTTPS + standard headers)
+# The AI service (FastAPI) is internal — only the Next.js frontend is
+# exposed. The frontend calls the AI service server-side via Docker DNS.
+# ──────────────────────────────────────────────────────────────────────────
+studybuddy.banschick.com {
+	reverse_proxy studybuddy-web:3002
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		X-XSS-Protection "1; mode=block"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	log {
+		output file /data/logs/studybuddy_access.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
+}
+
+# ============================================================================
+# TEMPLATE — Copy this block when adding a new application
+# ============================================================================
+# newapp.banschick.com {
+# 	reverse_proxy newapp:300X
+#
+# 	header {
+# 		X-Content-Type-Options "nosniff"
+# 		X-Frame-Options "DENY"
+# 		X-XSS-Protection "1; mode=block"
+# 		Referrer-Policy "strict-origin-when-cross-origin"
+# 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+# 		-Server
+# 	}
+#
+# 	log {
+# 		output file /data/logs/newapp_access.log {
+# 			roll_size 10mb
+# 			roll_keep 5
+# 		}
+# 	}
+# }

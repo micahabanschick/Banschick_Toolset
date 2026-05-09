@@ -1,0 +1,28 @@
+# ── Secrets (CRITICAL — never commit these) ────────────────────────────────
+.env
+
+# ── Node.js ────────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+
+# ── Python ─────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# ── Build artifacts ────────────────────────────────────────────────────────
+dist/
+build/
+*.egg-info/
+
+# ── IDE / OS ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ── Database backups (stored on server, not in repo) ───────────────────────
+backups/
+*.sql.gz

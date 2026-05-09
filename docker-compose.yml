@@ -1,0 +1,202 @@
+# ============================================================================
+# BANSCHICK TOOLSET — Docker Compose
+# ============================================================================
+# Orchestrates all services for the Banschick personal application suite.
+#
+# CURRENT APPS:
+#   QuantPipe      — Python pipeline + Streamlit dashboard (port 3001)
+#   StudyBuddy Web — Next.js 16 frontend (port 3002)
+#   StudyBuddy AI  — FastAPI RAG/embeddings service (port 3003)
+#
+# INFRASTRUCTURE:
+#   Caddy          — Reverse proxy, HTTPS termination, subdomain routing
+#   PostgreSQL     — Shared database for future apps (not used by current apps)
+#
+# NOTE ON CURRENT DATA STORAGE:
+#   QuantPipe uses Parquet files on disk + DuckDB (volume: quantpipe_data)
+#   StudyBuddy uses Supabase (external hosted Postgres + pgvector)
+#   The local PostgreSQL instance is provisioned for future apps that need it.
+#   It costs nothing to keep running and avoids reprovisioning later.
+#
+# Usage:
+#   Start everything:          docker compose up -d
+#   Rebuild one app:           docker compose up -d --build quantpipe
+#   View logs:                 docker compose logs -f [service]
+#   Stop everything:           docker compose down
+# ============================================================================
+
+services:
+  # ──────────────────────────────────────────────────────────────────────────
+  # CADDY — Reverse Proxy & TLS Termination
+  # ──────────────────────────────────────────────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - web
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # POSTGRESQL 16 — Shared Database (for future apps)
+  # ──────────────────────────────────────────────────────────────────────────
+  # Neither QuantPipe nor StudyBuddy use this currently:
+  #   - QuantPipe stores data in Parquet files (quantpipe_data volume)
+  #   - StudyBuddy connects to Supabase (external)
+  # This instance exists for future apps. It runs idle at ~30MB RAM.
+  # ──────────────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_ADMIN_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # QUANTPIPE — Quantitative Trading & Research Pipeline
+  # ──────────────────────────────────────────────────────────────────────────
+  # Python 3.12 pipeline: Polars, DuckDB, Parquet, VectorBT, Streamlit.
+  # Runs two processes inside the container:
+  #   1. Cron daemon — executes ingest_daily.py at 10pm ET on weekdays
+  #   2. Streamlit — health_dashboard.py served on port 3001
+  #
+  # Data is stored in Parquet files on a persistent volume, NOT PostgreSQL.
+  #
+  # Security tier: ENHANCED
+  #   - Isolated network (quantpipe_net)
+  #   - Protected by Cloudflare Access (configured in Cloudflare dashboard)
+  # ──────────────────────────────────────────────────────────────────────────
+  quantpipe:
+    build:
+      context: ./apps/quantpipe
+      dockerfile: Dockerfile
+    container_name: quantpipe
+    restart: unless-stopped
+    environment:
+      QP_DATA_DIR: /app/data
+      QP_LOG_DIR: /app/logs
+    env_file:
+      - ./apps/quantpipe/.env
+    volumes:
+      - quantpipe_data:/app/data
+      - quantpipe_logs:/app/logs
+    networks:
+      - web
+      - quantpipe_net
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # STUDYBUDDY-WEB — Next.js 16 Frontend
+  # ──────────────────────────────────────────────────────────────────────────
+  # App Router, React 19, Tailwind v4, shadcn/ui, Prisma, ts-fsrs.
+  # Connects to Supabase (external) for auth, database, and storage.
+  # Talks to studybuddy-ai internally for RAG and AI features.
+  #
+  # Security tier: BASELINE
+  # ──────────────────────────────────────────────────────────────────────────
+  studybuddy-web:
+    build:
+      context: ./apps/studybuddy-web
+      dockerfile: Dockerfile
+    container_name: studybuddy-web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      AI_SERVICE_URL: http://studybuddy-ai:3003
+    env_file:
+      - ./apps/studybuddy-web/.env
+    depends_on:
+      - studybuddy-ai
+    networks:
+      - web
+      - studybuddy_net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # STUDYBUDDY-AI — FastAPI RAG & Embeddings Service
+  # ──────────────────────────────────────────────────────────────────────────
+  # Python 3.12 + uv. Handles PDF ingestion, embeddings (pgvector via
+  # Supabase), course-scoped RAG chat, AI quiz generation, and science
+  # tooling (chem structures, math rendering).
+  #
+  # NOT exposed to the internet — only studybuddy-web talks to it.
+  # ──────────────────────────────────────────────────────────────────────────
+  studybuddy-ai:
+    build:
+      context: ./apps/studybuddy-ai
+      dockerfile: Dockerfile
+    container_name: studybuddy-ai
+    restart: unless-stopped
+    env_file:
+      - ./apps/studybuddy-ai/.env
+    networks:
+      - studybuddy_net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+# ════════════════════════════════════════════════════════════════════════════
+# NETWORKS
+# ════════════════════════════════════════════════════════════════════════════
+# web             — Caddy ↔ public-facing containers (quantpipe, studybuddy-web)
+# db              — Future app containers ↔ PostgreSQL
+# quantpipe_net   — QuantPipe isolation (enhanced security tier)
+# studybuddy_net  — StudyBuddy internal (web ↔ ai, not internet-exposed)
+# ════════════════════════════════════════════════════════════════════════════
+networks:
+  web:
+    driver: bridge
+  db:
+    driver: bridge
+    internal: true
+  quantpipe_net:
+    driver: bridge
+    internal: true
+  studybuddy_net:
+    driver: bridge
+
+# ════════════════════════════════════════════════════════════════════════════
+# VOLUMES
+# ════════════════════════════════════════════════════════════════════════════
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+  quantpipe_data:      # Parquet files (bronze/silver/gold layers)
+  quantpipe_logs:      # Ingestion and pipeline logs

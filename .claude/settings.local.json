@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c ' *)",
+      "Bash(python \"c:/Users/micha/Documents/Programming/Banschick_Toolset/Banschick_Toolset_Master_Build_Plan.docx\")",
+      "Bash(py --version)",
+      "Bash(py -c ' *)",
+      "Read(//c/Users/micha/.ssh/**)",
+      "Read(//c/Users/micha/Documents/Programming/StudyBuddy/web/**)",
+      "Read(//c/Users/micha/Documents/Programming/**)",
+      "Bash(py -c \"import json,sys; p=json.load\\(sys.stdin\\); deps={**p.get\\('dependencies',{}\\),**p.get\\('devDependencies',{}\\)}; [print\\(k,v\\) for k,v in sorted\\(deps.items\\(\\)\\) if any\\(x in k for x in ['tiptap','popover','shadcn']\\)]\")",
+      "Bash(npx tsc *)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\micha\\Documents\\Programming\\StudyBuddy\\web\\components\\ui",
+      "c:\\Users\\micha\\Documents\\Programming\\StudyBuddy\\web\\components\\editor",
+      "c:\\Users\\micha\\Documents\\Programming\\StudyBuddy\\web\\lib\\server\\actions",
+      "c:\\Users\\micha\\Documents\\Programming\\StudyBuddy\\web"
+    ]
+  }
+}
