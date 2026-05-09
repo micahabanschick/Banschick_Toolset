@@ -74,7 +74,7 @@ echo "✓ Mobile API started on port 3002 (pid $!)"
 echo "✓ Starting Streamlit dashboard on port 3001..."
 
 # Start Streamlit as the foreground process
-exec uv run streamlit run reports/health_dashboard.py \
+exec uv run streamlit run app.py \
     --server.port=3001 \
     --server.address=0.0.0.0 \
     --server.headless=true \
