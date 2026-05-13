@@ -98,6 +98,32 @@ studybuddy.banschick.com {
 	}
 }
 
+# ──────────────────────────────────────────────────────────────────────────
+# STUDYBUDDY MOBILE — studybuddy-mobile.banschick.com → studybuddy-web:3002
+# ──────────────────────────────────────────────────────────────────────────
+# Same container as studybuddy.banschick.com — Next.js detects the host
+# header and serves the mobile UI at the /m/ path prefix.
+# ──────────────────────────────────────────────────────────────────────────
+studybuddy-mobile.banschick.com {
+	reverse_proxy studybuddy-web:3002
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		X-XSS-Protection "1; mode=block"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	log {
+		output file /data/logs/studybuddy_mobile_access.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
+}
+
 # ============================================================================
 # TEMPLATE — Copy this block when adding a new application
 # ============================================================================
